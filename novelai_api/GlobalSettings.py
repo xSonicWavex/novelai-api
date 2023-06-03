@@ -469,6 +469,23 @@ class GlobalSettings:
             [0],
             [1],
         ],
+        "nerdstash_v1": [
+            [3],
+            [49356],
+            [1431],
+            [31715],
+            [34387],
+            [20765],
+            [30702],
+            [10691],
+            [49333],
+            [1266],
+            [19438],
+            [43145],
+            [26523],
+            [41471],
+            [2936],
+        ],
     }
 
     # this one is pretty much mandatory, else genji throws errors all the time
@@ -677,8 +694,9 @@ class GlobalSettings:
             "use_cache": False,
         }
 
-        if self._settings["num_logprobs"] != self.NO_LOGPROBS:
-            settings["num_logprobs"] = self._settings["num_logprobs"]
+        # NO_LOGPROBS is used to disable logprobs (=> not in the call)
+        if self._settings["num_logprobs"] == self.NO_LOGPROBS:
+            del settings["num_logprobs"]
 
         tokenizer_name = Tokenizer.get_tokenizer_name(model)
 
@@ -689,6 +707,6 @@ class GlobalSettings:
             settings["bad_words_ids"].extend(self._GENJI_AMBIGUOUS_TOKENS)
 
         if self._settings["bias_dinkus_asterism"]:
-            settings["logit_bias_exp"].extend(self._DINKUS_ASTERISM.get_tokenized_biases(model))
+            settings["logit_bias_exp"].extend(self._DINKUS_ASTERISM.get_tokenized_entries(model))
 
         return settings

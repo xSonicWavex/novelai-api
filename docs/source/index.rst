@@ -9,8 +9,7 @@
 
 TODO
 ====
-.. include:: ../../TODO.md
-   :parser: myst_parser.sphinx_
+> `Trello <https://trello.com/b/EHCPaRQL/novelai-api>`_
 
 Reference
 =========
@@ -33,10 +32,19 @@ example
    example/example
 
 
-API
----
+Test API
+--------
 
 .. toctree::
    :maxdepth: 2
 
    tests/api/api
+
+
+Test Mocked API
+---------------
+
+.. toctree::
+   :maxdepth: 2
+
+   tests/mock/mock

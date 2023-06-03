@@ -1,4 +1,6 @@
+import os
 import pathlib
+import warnings
 from copy import deepcopy
 from enum import Enum, EnumMeta, IntEnum
 from json import loads
@@ -89,11 +91,21 @@ class Model(StrEnum):
     Euterpe = "euterpe-v2"
     Krake = "krake-v2"
 
+    Clio = "clio-v1"
+
     Genji = "genji-jp-6b-v2"
     Snek = "genji-python-6b"
 
     HypeBot = "hypebot"
     Inline = "infillmodel"
+
+
+PREAMBLE = {
+    Model.Sigurd: "⁂\n",
+    Model.Euterpe: "\n***\n",
+    Model.Krake: "<|endoftext|>[ Prologue ]\n",
+    Model.Clio: "[ Author: Various ]\n[ Prologue ]\n",
+}
 
 
 class PresetView:
@@ -120,11 +132,9 @@ class _PresetMetaclass(type):
 
 class Preset(metaclass=_PresetMetaclass):
     # TODO
-    # no_repeat_ngram_size          number
-    # encoder_no_repeat_ngram_size	number
-    # num_return_sequences          number
-    # get_hidden_states             boolean
+    #: Similar to logprobs, but seems to return something different. Only return one token worth of data
     # next_word                     boolean
+    #: ???
     # output_nonzero_probs          boolean
 
     _TYPE_MAPPING = {
@@ -151,6 +161,31 @@ class Preset(metaclass=_PresetMetaclass):
         "bos_token_id": int,
         "eos_token_id": int,
         "max_time": int,
+        "no_repeat_ngram_size": int,
+        "encoder_no_repeat_ngram_size": int,
+        "num_return_sequences": int,
+        "get_hidden_states": bool,
+    }
+
+    DEFAULTS = {
+        "stop_sequences": [],
+        "temperature": 1.0,
+        "max_length": 40,
+        "min_length": 1,
+        "top_k": 0,
+        "top_a": 1.0,
+        "top_p": 0.0,
+        "typical_p": 0.0,
+        "tail_free_sampling": 1.0,
+        "repetition_penalty": 1.0,
+        "repetition_penalty_range": 0,
+        "repetition_penalty_slope": 0.0,
+        "repetition_penalty_frequency": 0.0,
+        "repetition_penalty_presence": 0.0,
+        "repetition_penalty_whitelist": [],
+        "length_penalty": 1.0,
+        "diversity_penalty": 0.0,
+        "order": list(Order),
     }
 
     # type completion for __setitem__ and __getitem__
@@ -188,9 +223,9 @@ class Preset(metaclass=_PresetMetaclass):
         repetition_penalty_presence: float
         #: List of tokens that are excluded from the repetition penalty (useful for colors and the likes)
         repetition_penalty_whitelist: list
-        #: https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig
+        #: https://huggingface.co/docs/transformers/main_classes/configuration#transformers.PretrainedConfig
         length_penalty: float
-        #: https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig
+        #: https://huggingface.co/docs/transformers/main_classes/configuration#transformers.PretrainedConfig
         diversity_penalty: float
         #: list of Order to set the sampling order
         order: List[Union[Order, int]]
@@ -202,6 +237,14 @@ class Preset(metaclass=_PresetMetaclass):
         eos_token_id: int
         #: https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig
         max_time: int
+        #: https://huggingface.co/docs/transformers/main_classes/configuration#transformers.PretrainedConfig
+        no_repeat_ngram_size: int
+        #: https://huggingface.co/docs/transformers/main_classes/configuration#transformers.PretrainedConfig
+        encoder_no_repeat_ngram_size: int
+        #: https://huggingface.co/docs/transformers/main_classes/configuration#transformers.PretrainedConfig
+        num_return_sequences: int
+        #: PretrainedConfig.output_hidden_states
+        get_hidden_states: bool
 
     _officials: Dict[str, Dict[str, "Preset"]]
     _officials_values: Dict[str, List["Preset"]]
@@ -229,8 +272,8 @@ class Preset(metaclass=_PresetMetaclass):
         if key not in self._TYPE_MAPPING:
             raise ValueError(f"'{key}' is not a valid setting")
 
-        if isinstance(value, self._TYPE_MAPPING[key]):  # noqa (pycharm PY-36317)
-            ValueError(f"Expected type '{self._TYPE_MAPPING[key]}' for {key}, but got type '{type(value)}'")
+        if not isinstance(value, self._TYPE_MAPPING[key]):  # noqa (pycharm PY-36317)
+            raise ValueError(f"Expected type '{self._TYPE_MAPPING[key]}' for {key}, but got type '{type(value)}'")
 
         self._settings[key] = value
 
@@ -316,12 +359,13 @@ class Preset(metaclass=_PresetMetaclass):
             del settings["textGenerationSettingsVersion"]  # not API relevant
 
         # remove disabled sampling options
-        for i, o in enumerate(Order):
-            if not self._enabled[i]:
-                settings["order"].remove(o)
-                settings.pop(ORDER_TO_NAME[o], None)
+        if "order" in settings:
+            for i, o in enumerate(Order):
+                if not self._enabled[i]:
+                    settings["order"].remove(o)
+                    settings.pop(ORDER_TO_NAME[o], None)
 
-        settings["order"] = [e.value for e in settings["order"]]
+            settings["order"] = [e.value for e in settings["order"]]
 
         # seems that 0 doesn't disable it, but does weird things
         if settings.get("repetition_penalty_range", None) == 0:
@@ -332,6 +376,14 @@ class Preset(metaclass=_PresetMetaclass):
             del settings["repetition_penalty_slope"]
 
         return settings
+
+    def __str__(self):
+        settings = {k: self._settings.get(k, v) for k, v in self.DEFAULTS.items()}
+        is_default = {k: " (default)" if v == self.DEFAULTS[k] else "" for k, v in settings.items()}
+
+        values = "\n".join(f"    {k} = {v}{is_default[k]}" for k, v in settings.items())
+
+        return f"Preset<{self.name}, {self.model}> {{\n{values}\n}}"
 
     def to_file(self, path: str) -> NoReturn:
         """
@@ -407,7 +459,7 @@ class Preset(metaclass=_PresetMetaclass):
         return c
 
     @classmethod
-    def from_file(cls, path: str) -> "Preset":
+    def from_file(cls, path: Union[str, bytes, os.PathLike, int]) -> "Preset":
         """
         Instantiate a preset from the given file
 
@@ -480,6 +532,11 @@ def _import_officials():
         model: Model
 
         path = pathlib.Path(__file__).parent / "presets" / f"presets_{model.value.replace('-', '_')}"
+        if not path.exists():
+            warnings.warn(f"Missing preset folder for model {model.value}")
+            cls._officials_values[model.value] = []
+            cls._officials[model.value] = {}
+            continue
 
         if (path / "default.txt").exists():
             with open(path / "default.txt", encoding="utf-8") as f:

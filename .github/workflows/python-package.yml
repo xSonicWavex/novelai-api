@@ -6,8 +6,12 @@ name: Python package
 on:
   push:
     branches: [ main ]
+    paths:
+      - "novelai_api/**"
   pull_request:
     branches: [ main ]
+    paths:
+      - "novelai_api/**"
 
 jobs:
   mock:
@@ -27,10 +31,11 @@ jobs:
         cache: 'pip'
     - name: Install dependencies
       run: |
-        pip install nox
+        pip install poetry
     - name: Test
       run: |
-        nox -s test-mock --no-error-on-missing-interpreters
+        poetry install
+        poetry run nai-test-mock
 
   test:
     environment: NovelAI
@@ -49,10 +54,11 @@ jobs:
         cache: 'pip'
     - name: Install dependencies
       run: |
-        pip install nox
+        pip install poetry
     - name: Test
       run: |
-        nox -s test-api-3.11
+        poetry install
+        poetry run nai-test-api
       env:
         NAI_USERNAME: ${{ secrets.NAI_USERNAME }}
         NAI_PASSWORD: ${{ secrets.NAI_PASSWORD }}

@@ -2,6 +2,7 @@ import copy
 import enum
 import json
 import math
+import os
 import random
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
@@ -17,7 +18,9 @@ class ImageModel(enum.Enum):
     Anime_Full = "nai-diffusion"
     Furry = "nai-diffusion-furry"
 
-    Anime_Inpainting = "anime-diffusion-inpainting"
+    Inainting_Anime_Curated = "safe-diffusion-inpainting"
+    Inpainting_Anime_Full = "nai-diffusion-inpainting"
+    Inpainting_Furry = "furry-diffusion-inpainting"
 
 
 class ControlNetModel(enum.Enum):
@@ -92,7 +95,7 @@ class ImageGenerationType(enum.Enum):
 
     NORMAL = "generate"
     IMG2IMG = "img2img"
-    # inpainting should go there
+    INPAINTING = "infill"
 
 
 class ImagePreset:
@@ -125,6 +128,11 @@ class ImagePreset:
         },
     }
 
+    # inpainting presets are the same as the normal ones
+    _UC_Presets[ImageModel.Inainting_Anime_Curated] = _UC_Presets[ImageModel.Anime_Curated]
+    _UC_Presets[ImageModel.Inpainting_Anime_Full] = _UC_Presets[ImageModel.Anime_Full]
+    _UC_Presets[ImageModel.Inpainting_Furry] = _UC_Presets[ImageModel.Furry]
+
     _CONTROLNET_MODELS = {
         ControlNetModel.Palette_Swap: "hed",
         ControlNetModel.Form_Lock: "depth",
@@ -152,9 +160,8 @@ class ImagePreset:
         "controlnet_model": ControlNetModel,
         "controlnet_strength": (int, float),
         "decrisper": bool,
-        # TODO
-        # "dynamic_thresholding_mimic_scale": (int, float),
-        # "dynamic_thresholding_percentile": (int, float),
+        "add_original_image": bool,
+        "mask": str,
     }
 
     # type completion for __setitem__ and __getitem__
@@ -195,10 +202,10 @@ class ImagePreset:
         controlnet_strength: float
         #: Reduce the deepfrying effects of high scale (https://twitter.com/Birchlabs/status/1582165379832348672)
         decrisper: bool
-
-        # TODO
-        # dynamic_thresholding_mimic_scale: float
-        # dynamic_thresholding_percentile: float
+        #: Prevent seams along the edges of the mask, but may change the image slightly
+        add_original_image: bool
+        #: Mask for inpainting (b64-encoded black and white png image, white is the inpainting area)
+        mask: str
 
     _DEFAULT = {
         "legacy": False,
@@ -216,6 +223,7 @@ class ImagePreset:
         "smea_dyn": False,
         "decrisper": False,
         "controlnet_strength": 1.0,
+        "add_original_image": False,
     }
 
     _settings: Dict[str, Any]
@@ -234,8 +242,8 @@ class ImagePreset:
         if key not in self._TYPE_MAPPING:
             raise ValueError(f"'{key}' is not a valid setting")
 
-        if isinstance(value, self._TYPE_MAPPING[key]):  # noqa (pycharm PY-36317)
-            ValueError(f"Expected type '{self._TYPE_MAPPING[key]}' for {key}, but got type '{type(value)}'")
+        if not isinstance(value, self._TYPE_MAPPING[key]):  # noqa (pycharm PY-36317)
+            raise ValueError(f"Expected type '{self._TYPE_MAPPING[key]}' for {key}, but got type '{type(value)}'")
 
         self._settings[key] = value
 
@@ -394,7 +402,7 @@ class ImagePreset:
         return per_sample * (n_samples - int(opus_discount))
 
     @classmethod
-    def from_file(cls, path: str) -> "ImagePreset":
+    def from_file(cls, path: Union[str, bytes, os.PathLike, int]) -> "ImagePreset":
         """
         Write the preset to a file
 
@@ -406,7 +414,7 @@ class ImagePreset:
 
         return cls(**data)
 
-    def to_file(self, path: str):
+    def to_file(self, path: Union[str, bytes, os.PathLike, int]):
         """
         Load the preset from a file
 

@@ -1,5 +1,7 @@
+import copy
 import enum
 import io
+import json
 import operator
 import zipfile
 from typing import Any, AsyncIterator, Dict, List, NoReturn, Optional, Tuple, Union
@@ -20,11 +22,48 @@ from novelai_api.utils import tokens_to_b64
 SSE_FIELDS = ["event", "data", "id", "retry"]
 
 
+def print_with_parameters(args: Dict[str, Any]):
+    """
+    Print the provided parameters in a nice way
+    """
+
+    a = copy.deepcopy(args)
+    if "input" in a:
+        a["input"] = f"{a['input'][:10]}...{a['input'][-10:]}" if 30 < len(a["input"]) else a["input"]
+
+    if "parameters" in a:
+        a["parameters"] = {k: str(v) for k, v in a["parameters"].items()}
+
+    for k in ["image", "mask", "controlnet_condition"]:
+        if k in a["parameters"]:
+            a["parameters"][k] = (
+                f"{a['parameters'][k][:10]}...{a['parameters'][k][-10:]}"
+                if 30 < len(a["parameters"][k])
+                else a["parameters"][k]
+            )
+
+    print(json.dumps(a, indent=4))
+
+
 # === API === #
 class LowLevel:
+    """
+    Low level API for NovelAI. This class is not meant to be used directly,
+    but rather through :attr:`NovelAIAPI.low_level <novelai_api.NovelAI_API.NovelAIAPI.low_level>`.
+
+    The most relevant methods are:
+
+    * :meth:`login <novelai_api._low_level.LowLevel.login>`
+    * :meth:`generate <novelai_api._low_level.LowLevel.generate>`
+    * :meth:`generate_image <novelai_api._low_level.LowLevel.generate_image>`
+    * :meth:`get_keystore <novelai_api._low_level.LowLevel.get_keystore>`
+    * :meth:`download_objects <novelai_api._low_level.LowLevel.download_objects>`
+    """
+
     _parent: "NovelAIAPI"  # noqa: F821
     _is_async: bool
 
+    #: Enable or disable schema validation for responses. Default is ``True``.
     is_schema_validation_enabled: bool
 
     def __init__(self, parent: "NovelAIAPI"):  # noqa: F821
@@ -33,9 +72,11 @@ class LowLevel:
 
     @staticmethod
     def _treat_response_object(rsp: ClientResponse, content: Any, status: int) -> Any:
+        url: str = rsp.url if isinstance(rsp.url, str) else rsp.url.human_repr()
+
         # error is an unexpected fail and usually come with a success status
         if isinstance(content, dict) and "error" in content:
-            raise NovelAIError(rsp.status, content["error"])
+            raise NovelAIError(url, rsp.status, content["error"])
 
         # success
         if rsp.status == status:
@@ -43,13 +84,13 @@ class LowLevel:
 
         # not success, but valid response
         if isinstance(content, dict) and "message" in content:  # NovelAI REST API error
-            raise NovelAIError(rsp.status, content["message"])
+            raise NovelAIError(url, rsp.status, content["message"])
 
         # HTTPException error
         if hasattr(rsp, "reason"):
-            raise NovelAIError(rsp.status, str(rsp.reason))
+            raise NovelAIError(url, rsp.status, str(rsp.reason))
 
-        raise NovelAIError(rsp.status, "Unknown error")
+        raise NovelAIError(url, rsp.status, "Unknown error")
 
     def _treat_response_bool(self, rsp: ClientResponse, content: Any, status: int) -> bool:
         if rsp.status == status:
@@ -147,7 +188,8 @@ class LowLevel:
                 yield e["data"]
 
         else:
-            raise NovelAIError(-1, f"Unsupported type: {rsp.content_type}")
+            url: str = rsp.url if isinstance(rsp.url, str) else rsp.url.human_repr()
+            raise NovelAIError(url, -1, f"Unsupported type: {rsp.content_type}")
 
     async def request(self, method: str, endpoint: str, data: Optional[Union[Dict[str, Any], str]] = None):
         """
@@ -778,6 +820,35 @@ class LowLevel:
             self._treat_response_object(rsp, content, 200)
 
             yield content
+
+    async def generate_prompt(self, model: Model, prompt: str, temp: float, length: int) -> Dict[str, Any]:
+        """
+        Generate a prompt
+
+        :param model: Model to use for the prompt
+        :param prompt: Prompt to base the generation on
+        :param temp: Temperature for the generation
+        :param length: Length of the returned prompt
+
+        :return: Generated prompt
+        """
+
+        assert_type(Model, model=model)
+        assert_type(str, prompt=prompt)
+        assert_type(float, temp=temp)
+        assert_type(int, length=length)
+
+        args = {
+            "model": model.value,
+            "prompt": prompt,
+            "temp": temp,
+            "tokens_to_generate": length,
+        }
+
+        async for rsp, content in self.request("post", "/ai/generate-prompt", args):
+            self._treat_response_object(rsp, content, 201)
+
+            return content
 
     async def generate_controlnet_mask(self, model: ControlNetModel, image: str) -> Tuple[str, bytes]:
         """

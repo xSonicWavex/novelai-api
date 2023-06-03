@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "novelai-api"
-version = "0.12.0"
+version = "0.16.2"
 description = "Python API for the NovelAI REST API"
 license = "MIT"
 authors = ["Aedial <aedial.dev@gmail.com>"]
@@ -8,6 +8,7 @@ readme = "README.md"
 repository = "https://github.com/Aedial/novelai-api"
 keywords = ["python", "NovelAI", "NAI", "API"]
 classifiers = [
+    "Programming Language :: Python :: 3.7",
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
@@ -27,12 +28,16 @@ tokenizers = "^0.13.1"
 ftfy = "^6.1.1"
 regex = "^2022.10.31"
 sentencepiece = "^0.1.98"
+poetry = "^1.4.2"
+pillow = "^9.5.0"
 
 [tool.poetry.group.dev.dependencies]
+python-dotenv = "^0.21.1"
+pre-commit = "^2.21.0"
+pylint = "^2.15.5"
 pytest = "^7.3.1"
 pytest-asyncio = "^0.20.1"
 pytest-randomly = "^3.12.0"
-pylint = "^2.15.5"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = "^5.3.0"
@@ -96,6 +101,13 @@ xfail_strict = true
 empty_parameter_set_mark = "fail_at_collect"
 asyncio_mode = "auto"
 addopts = "--tb=short -vv"
+
+[tool.poetry.scripts]
+nai-pre-commit = "novelai_api.poetry_scripts:pre_commit"
+nai-test-mock = "novelai_api.poetry_scripts:test_mock"
+nai-test-api = "novelai_api.poetry_scripts:test_api"
+nai-build-docs = "novelai_api.poetry_scripts:build_docs"
+nai-bump-version = "novelai_api.poetry_scripts:bump_version"
 
 [build-system]
 requires = ["poetry-core"]

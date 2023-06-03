@@ -2,7 +2,7 @@
 {filename}
 ==============================================================================
 
-| Example of how to generate an image with img2img
+| Example of how to generate an image with inpainting
 |
 | The resulting image will be placed in a folder named "results"
 """
@@ -23,18 +23,17 @@ async def main():
         api = api_handler.api
 
         image = base64.b64encode((d / "image.png").read_bytes()).decode()
+        mask = base64.b64encode((d / "inpainting_mask.png").read_bytes()).decode()
 
         preset = ImagePreset()
-        preset.noise = 0.1
-        # note that steps = 28, not 50, which mean strength needs to be adjusted accordingly
-        preset.strength = 0.5
         preset.image = image
+        preset.mask = mask
         preset.seed = 42
 
         async for _, img in api.high_level.generate_image(
-            "1girl", ImageModel.Anime_Full, preset, ImageGenerationType.IMG2IMG
+            "1girl", ImageModel.Inpainting_Anime_Full, preset, ImageGenerationType.INPAINTING
         ):
-            (d / "image_with_img2img.png").write_bytes(img)
+            (d / "image_with_inpainting.png").write_bytes(img)
 
 
 if __name__ == "__main__":
